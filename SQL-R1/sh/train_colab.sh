@@ -4,7 +4,7 @@
 
 export WANDB_API_KEY=your_wandb_api_key
 export VLLM_ATTENTION_BACKEND=XFORMERS
-export PYTHONPATH=$PYTHONPATH:.
+pip install -e .
 
 DATA_DIR_PATH=data
 
