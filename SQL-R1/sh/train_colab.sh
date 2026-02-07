@@ -18,7 +18,7 @@ LOG_PATH=logs/$PROJECT_NAME
 MODEL_PATH=models/$MODEL_ENV
 EXPERIMENT_NAME=$GPU_ENV-$MODEL_ENV-$RUN_ID
 
-mkdir -p $LOG_PATH
+mkdir -p $LOG_PATH/$MODEL_ENV
 
 set -x
 
@@ -64,7 +64,7 @@ python -m verl.trainer.main_ppo \
     trainer.save_freq=50 \
     trainer.test_freq=50 \
     trainer.total_epochs=5 \
-    actor_rollout_ref.model.lora_rank=32 \
-    actor_rollout_ref.model.lora_alpha=64 \
-    actor_rollout_ref.model.target_modules=all-linear \
+    +actor_rollout_ref.model.lora_rank=32 \
+    +actor_rollout_ref.model.lora_alpha=64 \
+    +actor_rollout_ref.model.target_modules=all-linear \
     actor_rollout_ref.rollout.load_format="safetensors" $@ 2>&1 | tee $LOG_PATH/$MODEL_ENV/grpo_colab.log
