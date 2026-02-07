@@ -236,11 +236,11 @@ sh sh/train_colab.sh
 ```
 
 Key memory optimizations for 24GB:
-- Batch size: 2 (vs 8)
-- Full CPU offloading (params, gradients, optimizer)
+- Batch size: 2
+- LoRA (Rank 32) enabled for memory efficiency
+- CPU offloading DISABLED (to maximize speed with LoRA)
 - Gradient checkpointing enabled
-- Reduced sequence lengths (2048 prompt, 1024 response)
-- Conservative vLLM memory (40%)
+- Conservative vLLM memory (50%)
 
 ### Training Details
 
@@ -250,7 +250,7 @@ Key memory optimizations for 24GB:
 | Batch Size | 8 | 2 |
 | Mini Batch | 8 | 1 |
 | GRPO Samples (n) | 8 | 4 |
-| Learning Rate | 3e-7 | 1e-6 |
+| Learning Rate | 3e-7 | 1e-4 (LoRA) |
 | KL Coefficient | 0.001 | 0.001 |
 | Epochs | 10 | 5 |
 
