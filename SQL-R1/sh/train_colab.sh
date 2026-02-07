@@ -4,7 +4,10 @@
 
 export WANDB_API_KEY=your_wandb_api_key
 export VLLM_ATTENTION_BACKEND=XFORMERS
+pip uninstall -y verl
 pip install -e .
+export PYTHONPATH=$PYTHONPATH:$(pwd)
+python -c "import sys; print('PYTHONPATH:', sys.path); import verl; print('verl file:', verl.__file__); import verl.models; print('verl.models imported successfully')"
 
 DATA_DIR_PATH=data
 
