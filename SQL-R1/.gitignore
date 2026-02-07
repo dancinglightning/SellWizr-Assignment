@@ -1,12 +1,12 @@
 # Folders
 data/
-models/
+/models/
 logs/
 outputs/
 results/
 wandb/
 # sh/
-*verl/models/
+# *verl/models/
 openr1_ckpts/
 *.wandb
 *.out
