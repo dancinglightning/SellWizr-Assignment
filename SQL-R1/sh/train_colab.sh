@@ -98,10 +98,10 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.n=2 \
     actor_rollout_ref.rollout.temperature=1.0 \
     actor_rollout_ref.rollout.dtype=float16 \
-    actor_rollout_ref.rollout.max_model_len=1536 \
-    actor_rollout_ref.rollout.max_num_seqs=1 \
-    actor_rollout_ref.rollout.enforce_eager=True \
-    actor_rollout_ref.rollout.enable_chunked_prefill=True \
+    +actor_rollout_ref.rollout.max_model_len=1536 \
+    +actor_rollout_ref.rollout.max_num_seqs=1 \
+    +actor_rollout_ref.rollout.enforce_eager=True \
+    +actor_rollout_ref.rollout.enable_chunked_prefill=True \
     +actor_rollout_ref.rollout.swap_space=4 \
     \
     `# -------- Reference Model Configuration (Maximum Offloading) --------` \
