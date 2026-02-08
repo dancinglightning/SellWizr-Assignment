@@ -117,13 +117,15 @@ def validate_response_structure(answer_str: str, processed_str: str) -> bool:
 
 def compute_score(solution_str: str, 
                  ground_truth: Dict[str, str],
-                 format_reward: int = 1) :
+                 format_reward: int = 1,
+                 db_path: Optional[str] = None) :
     """Computes comprehensive score for model response.
     
     Args:
         solution_str: Raw model response string
         ground_truth: Dictionary containing ground truth data
         format_reward: Points awarded/deducted for format correctness
+        db_path: Optional path to database (for compatibility)
     Returns:
         Total score (sum of format and answer rewards)
     """
@@ -150,7 +152,8 @@ def compute_score(solution_str: str,
     print(f"\n[Format validation] {'PASS' if format_correct else 'FAIL'}")
     print(f"[Format score]: {format_score}")
 
-    db_path = os.path.join('data/NL2SQL/SynSQL-2.5M/databases', db_name, db_name + '.sqlite')
+    db_base_path = ground_truth.get('db_base_path', 'data/NL2SQL/SynSQL-2.5M/databases')
+    db_path = os.path.join(db_base_path, db_name, db_name + '.sqlite')
 
     exec_score = 0
     result_score = 0

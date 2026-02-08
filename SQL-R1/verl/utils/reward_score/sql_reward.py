@@ -69,17 +69,6 @@ class SQLRewardFunction:
         # Statistics tracking
         self.stats = defaultdict(int)
         
-    @timeout_decorator.timeout(5, use_signals=False)
-    def _execute_query_with_timeout(
-        self, 
-        query: str, 
-        conn: sqlite3.Connection
-    ) -> List[Tuple]:
-        """Execute query with timeout protection"""
-        cursor = conn.cursor()
-        cursor.execute(query)
-        return cursor.fetchall()
-    
     def execute_query(self, query: str) -> Tuple[Optional[List[Tuple]], Optional[str]]:
         """
         Safely execute SQL query
@@ -89,18 +78,37 @@ class SQLRewardFunction:
         """
         try:
             conn = sqlite3.connect(self.db_path)
-            results = self._execute_query_with_timeout(query, conn)
+            
+            # Use timeout_decorator dynamically
+            try:
+                timed_execute = timeout_decorator.timeout(self.timeout_seconds, use_signals=False)(self._execute_query_raw)
+                results = timed_execute(query, conn)
+            except (timeout_decorator.TimeoutError, TimeoutError):
+                return None, f"Query timeout (>{self.timeout_seconds}s)"
+            except Exception as e:
+                # Fallback for systems where timeout_decorator/multiprocessing fails (like some Windows environments)
+                if "handle is invalid" in str(e) or "PicklingError" in str(e):
+                    results = self._execute_query_raw(query, conn)
+                else:
+                    raise e
+            
             conn.close()
             return results, None
-        except timeout_decorator.TimeoutError:
-            return None, "Query timeout (>5s)"
         except sqlite3.Error as e:
             return None, f"SQL Error: {str(e)}"
         except Exception as e:
             return None, f"Execution error: {str(e)}"
-    
+
+    def _execute_query_raw(self, query: str, conn: sqlite3.Connection) -> List[Tuple]:
+        """Raw execution without timeout (wrapped by caller)"""
+        cursor = conn.cursor()
+        cursor.execute(query)
+        return cursor.fetchall()
+
     def check_syntax_valid(self, query: str) -> bool:
         """Check if SQL query is syntactically valid"""
+        if not query or not isinstance(query, str):
+            return False
         try:
             parsed = sqlparse.parse(query)
             if not parsed or len(parsed) == 0:
@@ -108,7 +116,8 @@ class SQLRewardFunction:
             
             # Check if it's actually a SQL statement
             stmt = parsed[0]
-            return stmt.get_type() in ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE']
+            stmt_type = stmt.get_type()
+            return stmt_type in ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE']
         except Exception:
             return False
     
@@ -129,90 +138,53 @@ class SQLRewardFunction:
             
             stmt = parsed[0]
             
-            # Helper to extract identifiers recursively
-            def extract_identifiers(token):
-                if isinstance(token, sqlparse.sql.IdentifierList):
-                    for identifier in token.get_identifiers():
-                        extract_identifiers(identifier)
-                elif isinstance(token, sqlparse.sql.Identifier):
-                    # Check context: usually FROM/JOIN determines table
-                    # But without rigorous context tracking, we use simple heuristics
+            # Use a more robust token walker
+            def walk_tokens(tokens):
+                in_from = False
+                for token in tokens:
+                    # Identify clauses that change context
+                    if token.is_keyword:
+                        val = token.value.upper()
+                        if val in ('FROM', 'JOIN', 'INTO', 'UPDATE'):
+                            in_from = True
+                        elif val in ('SELECT', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'SET', 'VALUES'):
+                            in_from = False
                     
-                    real_name = token.get_real_name()
-                    if real_name:
-                        # If it has a parent (e.g. alias), check it
-                        # sqlparse structures are tricky.
-                        # Simple heuristic: if it looks like a table (no dot, or in FROM), it's a table?
-                        # No, simpler: check known parts.
-                        pass
-                        
-                    # Simpler approach: Flatten and filter
-                    pass
-
-            # Robust approach: Walk tokens and track 'seen_from'
-            # But sqlparse flattening loses structure.
-            # Let's use a simpler token iteration approach that respects keywords.
-            
-            from_seen = False
-            for token in stmt.flatten():
-                if token.ttype in [sqlparse.tokens.Keyword, sqlparse.tokens.Keyword.DML]:
-                    val = token.value.upper()
-                    if val in ['FROM', 'JOIN']:
-                        from_seen = True
-                    elif val in ['SELECT', 'WHERE', 'GROUP BY', 'ORDER BY', 'LIMIT']:
-                        from_seen = False
-                        
-                if token.ttype is None and isinstance(token, (sqlparse.sql.Identifier, sqlparse.sql.IdentifierList)):
-                    # This branch is never hit in flatten() usually, 
-                    # flatten() returns individual tokens (Name, etc)
-                    pass
-                
-                if token.ttype == sqlparse.tokens.Name:
-                    # It's an identifier name (table or column)
-                    val = token.value
-                    if from_seen:
-                        tables.add(val)
-                    else:
-                        columns.add(val)
-                        
-            # Use sqlparse built-in Identifier extraction if possible?
-            # Actually, the regex approach with sqlparse filter is safer than FULL parser for partial RL.
-            # But user wants "better frame".
-            
-            # Let's rely on sqlparse's structure which groups Identifiers.
-            # We iterate top-level tokens.
-            
-            in_from_join = False
-            for token in stmt.tokens:
-                if isinstance(token, sqlparse.sql.Comment):
-                    continue
-                    
-                if token.ttype in [sqlparse.tokens.Keyword, sqlparse.tokens.Keyword.DML]:
-                    if token.value.upper() in ['FROM', 'JOIN', 'INNER JOIN', 'LEFT JOIN']:
-                        in_from_join = True
-                    elif token.value.upper() in ['WHERE', 'GROUP BY', 'ORDER BY', 'LIMIT', 'HAVING']:
-                        in_from_join = False
-                        
-                if isinstance(token, (sqlparse.sql.IdentifierList, sqlparse.sql.Identifier)):
-                    # Extract names
-                    if isinstance(token, sqlparse.sql.IdentifierList):
-                        ids = token.get_identifiers()
-                    else:
-                        ids = [token]
-                        
-                    for id_token in ids:
-                        name = id_token.get_real_name()
+                    # Handle identifiers
+                    if isinstance(token, sqlparse.sql.Identifier):
+                        name = token.get_real_name()
                         if name:
-                            if in_from_join:
+                            if in_from:
                                 tables.add(name)
                             else:
                                 columns.add(name)
-                                # Also check for parent name (table.col)
-                                parent = id_token.get_parent_name()
-                                if parent:
-                                    tables.add(parent)
+                            
+                            # Check for parent (table.col)
+                            parent = token.get_parent_name()
+                            if parent:
+                                tables.add(parent)
+                                
+                    elif isinstance(token, sqlparse.sql.IdentifierList):
+                        for identifier in token.get_identifiers():
+                            if isinstance(identifier, sqlparse.sql.Identifier):
+                                name = identifier.get_real_name()
+                                if name:
+                                    if in_from:
+                                        tables.add(name)
+                                    else:
+                                        columns.add(name)
+                                    parent = identifier.get_parent_name()
+                                    if parent:
+                                        tables.add(parent)
+                    
+                    # Recurse into groups (Parenthesis, etc)
+                    if token.is_group:
+                        walk_tokens(token.tokens)
+            
+            walk_tokens(stmt.tokens)
                                     
-        except Exception:
+        except Exception as e:
+            logger.debug(f"sqlparse error: {e}. Falling back to regex.")
             # Fallback to regex if parsing fails structurally
             return self._extract_schema_regex(query)
             
@@ -222,20 +194,24 @@ class SQLRewardFunction:
         """Fallback regex extraction"""
         query_lower = query.lower()
         tables = set()
-        # FROM clause
-        tables.update(re.findall(r'from\s+([a-zA-Z_][a-zA-Z0-9_]*)', query_lower))
-        # JOIN clauses
-        tables.update(re.findall(r'join\s+([a-zA-Z_][a-zA-Z0-9_]*)', query_lower))
+        # clauses that usually precede table names
+        table_keywords = ['from', 'join', 'update', 'into']
+        for kw in table_keywords:
+            tables.update(re.findall(rf'{kw}\s+([a-zA-Z_][a-zA-Z0-9_]*)', query_lower))
         
-        columns = set()
-        col_match = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*\.)?([a-zA-Z_][a-zA-Z0-9_]*)', query)
+        # Simple column extraction: any identifier that isn't a keyword or table
+        all_ids = re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', query)
         
-        keywords = {
-            'select', 'from', 'where', 'and', 'or', 'join', 'on', 'as', 'in', 'is', 'not', 'null',
-            'count', 'sum', 'avg', 'max', 'min', 'distinct', 'order', 'by', 'group', 'having', 'limit', 'like', 'between'
+        # We'll use sqlparse's keyword list for better filtering if available
+        # or a standard set if not
+        sql_keywords = {
+            'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'JOIN', 'ON', 'AS', 'IN', 'IS', 'NOT', 'NULL',
+            'COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'DISTINCT', 'ORDER', 'BY', 'GROUP', 'HAVING', 
+            'LIMIT', 'LIKE', 'BETWEEN', 'INTO', 'UPDATE', 'VALUES', 'SET', 'DELETE', 'CREATE', 'TABLE'
         }
         
-        columns.update([c[1] for c in col_match if c[1].lower() not in keywords])
+        columns = {id_v for id_v in all_ids if id_v.upper() not in sql_keywords and id_v not in tables}
+        
         return tables, columns
     
     def compute_schema_alignment(self, pred_query: str, gold_query: str) -> float:
@@ -299,6 +275,9 @@ class SQLRewardFunction:
         
         return len(pred_keywords & gold_keywords) / len(gold_keywords | pred_keywords)
     
+    # Standard SQL clauses for structural similarity
+    STRUCTURE_CLAUSES = ['SELECT', 'FROM', 'WHERE', 'GROUP BY', 'HAVING', 'ORDER BY', 'LIMIT']
+
     def compute_structure_similarity(self, pred_query: str, gold_query: str) -> float:
         """
         Compute structural similarity based on clause presence and order
@@ -311,7 +290,7 @@ class SQLRewardFunction:
             query_upper = query.upper()
             structure = []
             
-            for clause in ['SELECT', 'FROM', 'WHERE', 'GROUP BY', 'HAVING', 'ORDER BY', 'LIMIT']:
+            for clause in self.STRUCTURE_CLAUSES:
                 if clause in query_upper:
                     structure.append(clause)
             
@@ -331,7 +310,6 @@ class SQLRewardFunction:
         self, 
         pred_query: str, 
         gold_query: str,
-        return_components: bool = False
     ) -> float:
         """
         Compute comprehensive reward for predicted SQL query
@@ -339,19 +317,24 @@ class SQLRewardFunction:
         Args:
             pred_query: Predicted SQL query
             gold_query: Ground truth SQL query
-            return_components: If True, return detailed breakdown
             
         Returns:
-            Total reward (and optionally RewardComponents)
+            Total reward
         """
         components = RewardComponents()
         
+        # 0. Basic validation
+        if not pred_query or not gold_query:
+            return 0.0
+
         # 1. Execution Correctness (Primary Reward)
         pred_results, pred_error = self.execute_query(pred_query)
         gold_results, gold_error = self.execute_query(gold_query)
         
         if pred_error is None and gold_error is None and pred_results is not None:
-            # Sort results for comparison (order shouldn't matter)
+            # Sort results for comparison (order shouldn't matter unless ORDER BY is present)
+            # But here we do a simple check. Robust comparison is in exec_eval.py if needed.
+            # For RL reward, we use a slightly simpler check or rely on exec_eval if integrated.
             pred_sorted = sorted([tuple(row) for row in pred_results])
             gold_sorted = sorted([tuple(row) for row in gold_results])
             
@@ -359,8 +342,8 @@ class SQLRewardFunction:
                 components.execution_correct = self.weights['execution']
                 self.stats['execution_correct'] += 1
             else:
-                # Partial credit for same number of rows
-                if len(pred_results) == len(gold_results):
+                # Partial credit for same number of rows (if they have rows)
+                if len(pred_results) == len(gold_results) and len(gold_results) > 0:
                     components.execution_correct = 0.3 * self.weights['execution']
                     self.stats['partial_execution'] += 1
         
@@ -392,10 +375,6 @@ class SQLRewardFunction:
         )
         
         self.stats['total_queries'] += 1
-        
-        # Normally return_components is handled by get_statistics,
-        # but here we follow the user schema slightly.
-        # But this function is usually called by RewardManager as compute_score(solution, ground_truth) -> float
         return components.total
     
     def get_statistics(self) -> Dict[str, Any]:
@@ -407,10 +386,10 @@ class SQLRewardFunction:
         return {
             'total_queries': total,
             'execution_correct': self.stats['execution_correct'],
-            'execution_correct_rate': self.stats['execution_correct'] / total,
+            'execution_correct_rate': self.stats['execution_correct'] / total if total > 0 else 0,
             'partial_execution': self.stats['partial_execution'],
             'syntax_valid': self.stats['syntax_valid'],
-            'syntax_valid_rate': self.stats['syntax_valid'] / total
+            'syntax_valid_rate': self.stats['syntax_valid'] / total if total > 0 else 0
         }
 
 # ... (existing imports)
