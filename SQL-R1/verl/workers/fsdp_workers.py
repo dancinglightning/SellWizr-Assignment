@@ -131,7 +131,8 @@ class ActorRolloutRefWorker(Worker):
 
         torch_dtype = fsdp_config.get('model_dtype', None)
         if torch_dtype is None:
-            torch_dtype = torch.float32 if self._is_actor else torch.bfloat16
+            # Use bfloat16 by default for both actor and ref to save memory
+            torch_dtype = torch.bfloat16
         else:
             torch_dtype = PrecisionType.to_dtype(torch_dtype)
 
@@ -331,7 +332,9 @@ class ActorRolloutRefWorker(Worker):
         if self._is_rollout:
             self.rollout, self.rollout_sharding_manager = self._build_rollout()
 
-        if self._is_ref:
+        # Skip loading reference model if KL loss is disabled (saves ~6GB memory)
+        use_kl_loss = self.config.actor.get('use_kl_loss', True) if self._is_actor else True
+        if self._is_ref and use_kl_loss:
             self.ref_module_fsdp = self._build_model_optimizer(model_path=self.config.model.path,
                                                                fsdp_config=self.config.ref.fsdp_config,
                                                                optim_config=None,
@@ -346,6 +349,12 @@ class ActorRolloutRefWorker(Worker):
             with open_dict(self.config.ref):
                 self.config.ref.use_remove_padding = use_remove_padding
             self.ref_policy = DataParallelPPOActor(config=self.config.ref, actor_module=self.ref_module_fsdp)
+        elif self._is_ref:
+            # KL loss disabled - don't load reference model
+            self.ref_module_fsdp = None
+            self.ref_policy = None
+            if self.rank == 0:
+                print('Skipping reference model loading (use_kl_loss=False)')
 
         if self._is_actor:
             self.flops_counter = FlopsCounter(self.actor_model_config)
