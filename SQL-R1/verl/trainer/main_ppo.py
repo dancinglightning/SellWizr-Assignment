@@ -24,7 +24,10 @@ from verl.trainer.ppo.ray_trainer import RayPPOTrainer
 def _select_rm_score_fn(data_source):
     if data_source == 'openai/gsm8k':
         return gsm8k.compute_score
-    elif "synsql" in data_source or "sql" in data_source:
+    elif "synsql" in data_source:
+        from verl.utils.reward_score import synsql
+        return synsql.compute_score
+    elif "sql" in data_source:
         from verl.utils.reward_score import sql_reward
         return sql_reward.compute_score
     else:
@@ -72,14 +75,10 @@ class RewardManager():
             ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
 
             # select rm_score
-            # select rm_score
             data_source = data_item.non_tensor_batch['data_source']
             compute_score_fn = _select_rm_score_fn(data_source)
 
-            if "synsql" in data_source or "sql" in data_source:
-                 score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, db_path=self.db_path)
-            else:
-                 score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth)
+            score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, db_path=self.db_path)
             reward_tensor[i, valid_response_length - 1] = score
 
             if data_source not in already_print_data_sources:

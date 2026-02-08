@@ -434,8 +434,19 @@ _REWARD_FN = None
 
 def compute_score(solution_str, ground_truth, db_path='data/database.db'):
     global _REWARD_FN
-    if _REWARD_FN is None or _REWARD_FN.db_path != db_path:
-        _REWARD_FN = SQLRewardFunction(db_path=db_path)
+    
+    # Dynamic DB Path Resolution
+    # Some datasets (like Spider/SynSQL) provide the DB info in ground_truth
+    final_db_path = db_path
+    if isinstance(ground_truth, dict):
+        db_id = ground_truth.get('db_id')
+        db_base_path = ground_truth.get('db_base_path')
+        if db_id and db_base_path:
+            # Construct path: base/db_id/db_id.sqlite
+            final_db_path = os.path.join(db_base_path, db_id, f"{db_id}.sqlite")
+    
+    if _REWARD_FN is None or _REWARD_FN.db_path != final_db_path:
+        _REWARD_FN = SQLRewardFunction(db_path=final_db_path)
     
     # 1. Extract Pred SQL
     answer_text, processed_str = extract_solution(solution_str)
