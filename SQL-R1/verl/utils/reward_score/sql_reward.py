@@ -1,5 +1,6 @@
 
 import re
+import os
 import sqlite3
 import sqlparse
 from typing import Dict, List, Tuple, Optional, Any
@@ -441,7 +442,16 @@ def compute_score(solution_str, ground_truth, db_path='data/database.db'):
     if isinstance(ground_truth, dict):
         db_id = ground_truth.get('db_id')
         db_base_path = ground_truth.get('db_base_path')
-        if db_id and db_base_path:
+        if db_id:
+            if not db_base_path:
+                # Fallback search
+                possible_bases = ['data/databases', 'data/NL2SQL/SynSQL-2.5M/databases', 'data']
+                for base in possible_bases:
+                    if os.path.exists(os.path.join(base, db_id)):
+                        db_base_path = base
+                        break
+                db_base_path = db_base_path or 'data/databases'
+            
             # Construct path: base/db_id/db_id.sqlite
             final_db_path = os.path.join(db_base_path, db_id, f"{db_id}.sqlite")
     

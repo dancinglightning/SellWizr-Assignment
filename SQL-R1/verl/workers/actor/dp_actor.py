@@ -31,7 +31,7 @@ from verl.utils.ulysses import ulysses_pad_and_slice_inputs, gather_outpus_and_u
 from verl.utils.seqlen_balancing import rearrange_micro_batches, get_reverse_idx
 import verl.utils.torch_functional as verl_F
 
-from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis
+
 
 __all__ = ['DataParallelPPOActor']
 
@@ -69,6 +69,13 @@ class DataParallelPPOActor(BasePPOActor):
             position_ids = micro_batch['position_ids']
 
             if self.use_remove_padding:
+                try:
+                    from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis
+                except ImportError as e:
+                    print(f"Error: flash-attn is required for use_remove_padding=True but failed to import: {e}")
+                    print("Try running: !pip uninstall -y flash-attn && pip install flash-attn --no-build-isolation")
+                    raise e
+                
                 input_ids_rmpad, indices, *_ = unpad_input(input_ids.unsqueeze(-1),
                                                            attention_mask)  # input_ids_rmpad (total_nnz, ...)
                 input_ids_rmpad = input_ids_rmpad.transpose(0, 1)  # (1, total_nnz)

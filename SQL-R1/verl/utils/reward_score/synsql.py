@@ -152,7 +152,17 @@ def compute_score(solution_str: str,
     print(f"\n[Format validation] {'PASS' if format_correct else 'FAIL'}")
     print(f"[Format score]: {format_score}")
 
-    db_base_path = ground_truth.get('db_base_path', 'data/NL2SQL/SynSQL-2.5M/databases')
+    # Dynamic DB resolution
+    db_base_path = ground_truth.get('db_base_path')
+    if not db_base_path:
+        # Check standard project locations
+        possible_bases = ['data/databases', 'data/NL2SQL/SynSQL-2.5M/databases', 'data']
+        for base in possible_bases:
+            if os.path.exists(os.path.join(base, db_name)):
+                db_base_path = base
+                break
+        db_base_path = db_base_path or 'data/databases'
+
     db_path = os.path.join(db_base_path, db_name, db_name + '.sqlite')
 
     exec_score = 0
