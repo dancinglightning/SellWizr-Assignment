@@ -131,8 +131,9 @@ class ActorRolloutRefWorker(Worker):
 
         torch_dtype = fsdp_config.get('model_dtype', None)
         if torch_dtype is None:
-            # Use bfloat16 by default for both actor and ref to save memory
-            torch_dtype = torch.bfloat16
+            # Use float16 by default for both actor and ref to save memory
+            # Note: T4 GPU (compute capability 7.5) doesn't support bfloat16
+            torch_dtype = torch.float16
         else:
             torch_dtype = PrecisionType.to_dtype(torch_dtype)
 
