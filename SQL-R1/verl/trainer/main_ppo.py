@@ -25,11 +25,7 @@ def _select_rm_score_fn(data_source):
     if data_source == 'openai/gsm8k':
         return gsm8k.compute_score
     elif "synsql" in data_source:
-        from verl.utils.reward_score import synsql
         return synsql.compute_score
-    elif "sql" in data_source:
-        from verl.utils.reward_score import sql_reward
-        return sql_reward.compute_score
     else:
         raise NotImplementedError
 
@@ -38,10 +34,9 @@ class RewardManager():
     """The reward manager.
     """
 
-    def __init__(self, tokenizer, num_examine, db_path=None) -> None:
+    def __init__(self, tokenizer, num_examine) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
-        self.db_path = db_path
 
     def __call__(self, data: DataProto):
         """We will expand this function gradually based on the available datasets"""
@@ -78,10 +73,7 @@ class RewardManager():
             data_source = data_item.non_tensor_batch['data_source']
             compute_score_fn = _select_rm_score_fn(data_source)
 
-            if "sql" in data_source:
-                 score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, db_path=self.db_path)
-            else:
-                 score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth)
+            score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth)
             reward_tensor[i, valid_response_length - 1] = score
 
             if data_source not in already_print_data_sources:
@@ -175,16 +167,10 @@ def main_task(config):
         role_worker_mapping[Role.RewardModel] = ray.remote(RewardModelWorker)
         mapping[Role.RewardModel] = global_pool_id
 
-    # Function-based RM configuration
-    db_path = 'data/database.db' # default
-    if 'reward' in config and config.reward:
-        if 'db_path' in config.reward:
-            db_path = config.reward.db_path
-
-    reward_fn = RewardManager(tokenizer=tokenizer, num_examine=0, db_path=db_path)
+    reward_fn = RewardManager(tokenizer=tokenizer, num_examine=0)
 
     # Note that we always use function-based RM for validation
-    val_reward_fn = RewardManager(tokenizer=tokenizer, num_examine=1, db_path=db_path)
+    val_reward_fn = RewardManager(tokenizer=tokenizer, num_examine=1)
 
     resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)
 
