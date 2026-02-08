@@ -78,7 +78,10 @@ class RewardManager():
             data_source = data_item.non_tensor_batch['data_source']
             compute_score_fn = _select_rm_score_fn(data_source)
 
-            score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, db_path=self.db_path)
+            if "sql" in data_source:
+                 score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, db_path=self.db_path)
+            else:
+                 score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth)
             reward_tensor[i, valid_response_length - 1] = score
 
             if data_source not in already_print_data_sources:

@@ -39,6 +39,30 @@ EXPERIMENT_NAME=$GPU_ENV-$MODEL_ENV-$RUN_ID
 
 mkdir -p $LOG_PATH/$MODEL_ENV
 
+# ============================================================================
+# DATA & MODEL PREPARATION
+# ============================================================================
+
+# Ensure data directory exists and has files
+if [ ! -d "$DATA_DIR_PATH" ] || [ ! -f "$DATA_DIR_PATH/train.parquet" ]; then
+    echo "Data directory missing or incomplete. Setting up from example_data..."
+    mkdir -p "$DATA_DIR_PATH"
+    if [ -d "example_data" ]; then
+        cp example_data/*.parquet "$DATA_DIR_PATH/" 2>/dev/null || true
+        echo "✓ Data prepared from example_data"
+    else
+        echo "Error: Neither 'data/' nor 'example_data/' found. Please run Step 5 in the Colab notebook."
+        exit 1
+    fi
+fi
+
+# Ensure model exists
+if [ ! -d "$MODEL_PATH" ]; then
+    echo "Error: Model not found at $MODEL_PATH"
+    echo "Please run Step 4 in the Colab notebook to download the model."
+    exit 1
+fi
+
 echo "================================"
 echo "SQL-R1 Training Configuration"
 echo "================================"
