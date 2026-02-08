@@ -61,6 +61,7 @@ python -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
     actor_rollout_ref.rollout.n=4 \
     actor_rollout_ref.rollout.temperature=1.0 \
+    actor_rollout_ref.rollout.dtype=float16 \
     actor_rollout_ref.ref.log_prob_micro_batch_size=4 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     +actor_rollout_ref.ref.fsdp_config.model_dtype=fp16 \
