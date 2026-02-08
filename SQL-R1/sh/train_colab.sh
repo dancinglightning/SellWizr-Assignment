@@ -65,15 +65,18 @@ if [ ! -d "$MODEL_PATH" ]; then
     exit 1
 fi
 
+# Default to using remove_padding (faster)
+USE_RMPAD=True
+
 # Check for Flash-Attention ABI mismatch (common in Colab)
 echo "Checking dependencies..."
 python3 -c "import flash_attn; print('✓ flash_attn imported successfully')" 2>/dev/null || {
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     echo "WARNING: flash-attn is broken (ABI mismatch with Torch 2.4.0)."
-    echo "Please run this command in a Colab cell to fix it:"
-    echo "  !pip uninstall -y flash-attn && pip install flash-attn --no-build-isolation"
+    echo "Falling back to standard padding mode (slower but stable)."
+    echo "To fix properly, run: !pip uninstall -y flash-attn && pip install flash-attn --no-build-isolation"
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-    # We attempt to proceed as verl might fallback in some modes, but it's risky
+    USE_RMPAD=False
 }
 
 echo "================================"
@@ -108,7 +111,7 @@ python -m verl.trainer.main_ppo \
     \
     `# -------- Model Configuration --------` \
     actor_rollout_ref.model.path=$MODEL_PATH \
-    actor_rollout_ref.model.use_remove_padding=True \
+    actor_rollout_ref.model.use_remove_padding=$USE_RMPAD \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     +actor_rollout_ref.model.lora_rank=16 \
     +actor_rollout_ref.model.lora_alpha=32 \
