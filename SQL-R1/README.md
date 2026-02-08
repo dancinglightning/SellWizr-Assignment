@@ -43,6 +43,77 @@
   </p>
 </div>
 
+---
+
+## 📋 SellWizr Assignment: RL Integration for Text-to-SQL
+
+This repository extends SQL-R1 with an optimized setup for running on Kaggle with limited GPU resources (16GB T4).
+
+### Chosen Paper & Rationale
+
+**Paper**: [SQL-R1: Training Natural Language to SQL Reasoning Model By Reinforcement Learning](https://arxiv.org/abs/2504.08600)
+
+**Why SQL-R1?**
+1. **State-of-the-art results**: 88.6% on Spider, 67.1% on BIRD benchmarks
+2. **GRPO Algorithm**: Uses Group Relative Policy Optimization (no critic model), saving ~50% GPU memory vs PPO
+3. **3B Model Available**: Qwen2.5-Coder-3B fits within 16GB memory budget
+4. **Complete RL Pipeline**: Full implementation of reward computation and policy updates
+
+### RL Integration Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    GRPO Training Loop                            │
+├─────────────────────────────────────────────────────────────────┤
+│  1. Data Loader → Load prompts with ground truth SQL            │
+│  2. Actor Rollout → vLLM generates N responses per prompt       │
+│  3. Reward Manager → Compute scores via synsql.py               │
+│  4. GRPO Advantage → Normalize rewards per-group (no critic!)   │
+│  5. Policy Update → PPO-style clipped objective + KL penalty    │
+│  6. Loop → Repeat for configured epochs                         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Reward Design
+
+| Component | Correct | Incorrect | Description |
+|-----------|:-------:|:---------:|-------------|
+| **Format** | +1 | -1 | Valid `<think>...</think><answer>...</answer>` |
+| **Execution** | +2 | -2 | SQL executes without errors |
+| **Result Match** | +3 | -3 | Query results match gold SQL |
+| **Length Bonus** | 0-1.5 | 0 | Encourages concise reasoning |
+
+**Total Score Range**: -6 to +7.5
+
+### Training on Kaggle
+
+```bash
+# Option 1: Use the Jupyter notebook
+# Upload notebooks/SQL_R1_Kaggle_Training.ipynb to Kaggle
+
+# Option 2: Use the training script
+sh sh/train_kaggle.sh
+```
+
+**Memory Optimizations for 16GB GPU:**
+- Batch size: 2
+- Gradient checkpointing: Enabled
+- CPU offloading: Parameters, gradients, optimizer states
+- Sequence length: 1024 prompt + 512 response
+- vLLM memory: 30% GPU allocation
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `notebooks/SQL_R1_Kaggle_Training.ipynb` | Complete Kaggle notebook |
+| `sh/train_kaggle.sh` | Optimized training script |
+| `verl/utils/reward_score/synsql.py` | Reward computation |
+| `verl/trainer/ppo/core_algos.py` | GRPO advantage estimation |
+| `verl/trainer/main_ppo.py` | Main training entry point |
+
+---
+
 ## 📖 Overview
 
 Natural Language to SQL (NL2SQL) enables intuitive interactions with databases by transforming natural language queries into structured SQL statements.  Despite recent advancements in enhancing human-computer interaction within database applications, significant challenges persist, particularly regarding the inference performance in complex scenarios involving multi-table joins and nested queries. Current methodologies primarily utilize supervised fine-tuning (SFT) to train the NL2SQL model, which may limit adaptability and interpretability in new environments (e.g., finance and healthcare). In order to enhance the reasoning performance of the NL2SQL model in the above complex situations, we introduce SQL-R1, a novel NL2SQL reasoning model trained by the reinforcement learning (RL) algorithms. We design a specialized RL-based reward function tailored for NL2SQL tasks and discussed the impact of cold start on the effectiveness of intensive training. In addition, we achieve competitive accuracy using only a tiny amount of synthetic NL2SQL data for augmented training and further explore data engineering for RL. In existing experiments, SQL-R1 achieves execution accuracy of 88.6\% and 67.1\% on the benchmark Spider and BIRD, respectively.
