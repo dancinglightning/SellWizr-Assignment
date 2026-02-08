@@ -106,9 +106,9 @@ python -m verl.trainer.main_ppo \
     \
     `# -------- Reference Model Configuration (Maximum Offloading) --------` \
     actor_rollout_ref.ref.log_prob_micro_batch_size=2 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=True \
-    actor_rollout_ref.ref.fsdp_config.grad_offload=True \
-    actor_rollout_ref.ref.fsdp_config.optimizer_offload=True \
+    ++actor_rollout_ref.ref.fsdp_config.param_offload=True \
+    +actor_rollout_ref.ref.fsdp_config.grad_offload=True \
+    +actor_rollout_ref.ref.fsdp_config.optimizer_offload=True \
     +actor_rollout_ref.ref.fsdp_config.model_dtype=fp16 \
     \
     `# -------- Algorithm Configuration --------` \
