@@ -18,8 +18,9 @@ export RAY_memory_monitor_refresh_ms=0
 export PYTHONUNBUFFERED=1
 
 # PyTorch memory optimization
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:128
-
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+export LC_ALL=C.UTF-8
+export LANG=C.UTF-8
 # Clear any existing GPU memory
 python -c "import torch; torch.cuda.empty_cache(); print('GPU cache cleared')" 2>/dev/null || true
 
@@ -48,7 +49,8 @@ if [ ! -d "$DATA_DIR_PATH" ] || [ ! -f "$DATA_DIR_PATH/train.parquet" ]; then
     echo "Data directory missing or incomplete. Setting up from example_data..."
     mkdir -p "$DATA_DIR_PATH"
     if [ -d "example_data" ]; then
-        cp example_data/*.parquet "$DATA_DIR_PATH/" 2>/dev/null || true
+        cp example_data/train.parquet "$DATA_DIR_PATH/" 2>/dev/null || true
+        cp example_data/test.parquet "$DATA_DIR_PATH/" 2>/dev/null || true
         echo "✓ Data prepared from example_data"
     else
         echo "Error: Neither 'data/' nor 'example_data/' found. Please run Step 5 in the Colab notebook."
@@ -62,6 +64,17 @@ if [ ! -d "$MODEL_PATH" ]; then
     echo "Please run Step 4 in the Colab notebook to download the model."
     exit 1
 fi
+
+# Check for Flash-Attention ABI mismatch (common in Colab)
+echo "Checking dependencies..."
+python3 -c "import flash_attn; print('✓ flash_attn imported successfully')" 2>/dev/null || {
+    echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    echo "WARNING: flash-attn is broken (ABI mismatch with Torch 2.4.0)."
+    echo "Please run this command in a Colab cell to fix it:"
+    echo "  !pip uninstall -y flash-attn && pip install flash-attn --no-build-isolation"
+    echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    # We attempt to proceed as verl might fallback in some modes, but it's risky
+}
 
 echo "================================"
 echo "SQL-R1 Training Configuration"
